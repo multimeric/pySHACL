@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from functools import wraps
 from io import BufferedIOBase, TextIOBase
 from sys import stderr
-from typing import Any, TypeAlias, Union, Optional, overload, TypedDict
+from typing import Any, TypeAlias, Union, Optional, overload, TypedDict, TYPE_CHECKING
 import typing
 from typing_extensions import Unpack
 
@@ -22,10 +22,15 @@ from .rule_expand_runner import RuleExpandRunner
 from .validator import Validator, assign_baked_in
 from .validator_conformance import check_dash_result
 
-DataGraphInput = Union[DataGraph, GraphLike, BufferedIOBase, TextIOBase, str, bytes]
+if TYPE_CHECKING:
+    import pyoxigraph as ox
+
+DataGraphInput = Union[DataGraph, GraphLike, BufferedIOBase, TextIOBase, str, bytes, ox.Store]
 MultiDataGraphInput = Sequence[DataGraphInput]
-ValidateReturn: TypeAlias = tuple[bool, Graph, str]
+ValidateReturn: TypeAlias = tuple[bool, Graph | ValidationFailure, str]
+SerializeReportGraphReturn: TypeAlias = tuple[bool, bytes, str]
 ValidateEachReturn: TypeAlias = dict[int, ValidateReturn]
+InferenceMode: TypeAlias = typing.Literal['none', 'rdfs', 'owlrl', "both"]
 
 def _is_multi_data_graph_input(data_graph: object) -> bool:
     if isinstance(data_graph, (str, bytes, DataGraph, BufferedIOBase, TextIOBase, Graph, Dataset)):
@@ -33,10 +38,13 @@ def _is_multi_data_graph_input(data_graph: object) -> bool:
     return isinstance(data_graph, (tuple, list, set, frozenset, Sequence))
 
 class ValidateKwargs(TypedDict, total=False):
+    data_graph_format: Optional[str]
+    shacl_graph_format: Optional[str]
+    ont_graph_format: Optional[str]
     shacl_graph: Optional[DataGraphInput]
     ont_graph: Optional[DataGraphInput]
     advanced: Optional[bool]
-    inference: Optional[typing.Literal["rdfs", "owlrl", "both", "none"]]
+    inference: Optional[InferenceMode]
     inplace: Optional[bool]
     abort_on_first: Optional[bool]
     allow_infos: Optional[bool]
@@ -45,13 +53,19 @@ class ValidateKwargs(TypedDict, total=False):
     sparql_mode: Optional[bool]
     focus_nodes: Optional[list[Union[str, URIRef]]]
     use_shapes: Optional[list[Union[str, URIRef]]]
-    debug: Optional[bool]
+    debug: bool
+    do_owl_imports: bool
+    iterate_rules: bool
+    js: Optional[bool]
+    meta_shacl: bool
+    check_dash_result: bool
 
 @overload
 def validate(
     data_graph: MultiDataGraphInput,
     *args: Any,
     multi_data_graphs_mode: typing.Literal["validate_each"],
+    serialize_report_graph: typing.Literal[False] = False,
     **kwargs: Unpack[ValidateKwargs],
 ) -> ValidateEachReturn:
     # Return type is a dict only if `multi_data_graphs_mode` is "validate_each" *and* `data_graph` is a sequence of data graphs
@@ -61,14 +75,25 @@ def validate(
     data_graph: DataGraphInput,
     *args: Any,
     multi_data_graphs_mode: typing.Literal["combine", "validate_each"] | None = None,
+    serialize_report_graph: typing.Literal[False] = False,
     **kwargs: Unpack[ValidateKwargs],
 ) -> ValidateReturn:
+    ...
+@overload
+def validate(
+    data_graph: DataGraphInput,
+    *args: Any,
+    multi_data_graphs_mode: typing.Literal["combine", "validate_each"] | None = None,
+    serialize_report_graph: typing.Literal[True],
+    **kwargs: Unpack[ValidateKwargs],
+) -> SerializeReportGraphReturn:
     ...
 @overload
 def validate(
     data_graph: MultiDataGraphInput,
     *args: Any,
     multi_data_graphs_mode: typing.Literal["combine"] | None = None,
+    serialize_report_graph: typing.Literal[False] = False,
     **kwargs: Unpack[ValidateKwargs],
 ) -> ValidateReturn:
     ...
@@ -78,7 +103,7 @@ def validate(
     shacl_graph: Optional[DataGraphInput] = None,
     ont_graph: Optional[DataGraphInput] = None,
     advanced: Optional[bool] = False,
-    inference: Optional[typing.Literal["rdfs", "owlrl", "both", "none"]] = None,
+    inference: Optional[InferenceMode] = None,
     inplace: Optional[bool] = False,
     abort_on_first: Optional[bool] = False,
     allow_infos: Optional[bool] = False,
@@ -89,7 +114,7 @@ def validate(
     use_shapes: Optional[list[Union[str, URIRef]]] = None,
     multi_data_graphs_mode: Optional[str] = None,
     **kwargs,
-) -> Union[ValidateReturn, ValidateEachReturn]:
+) -> Union[ValidateReturn, ValidateEachReturn, SerializeReportGraphReturn]:
     """
     :param data_graph: rdflib.Graph, file path, web URL, or a array-like sequence of those to validate
     :type data_graph: rdflib.Graph | str | bytes | Sequence
@@ -304,7 +329,7 @@ def validate_each(
     shacl_graph: Optional[DataGraphInput] = None,
     ont_graph: Optional[DataGraphInput] = None,
     advanced: Optional[bool] = False,
-    inference: Optional[str] = None,
+    inference: Optional[typing.Literal['none', 'rdfs', 'owlrl', "both"]] = None,
     inplace: Optional[bool] = False,
     abort_on_first: Optional[bool] = False,
     allow_infos: Optional[bool] = False,

@@ -398,7 +398,7 @@ def check_dash_result(
     report_graph: GraphLike,
     expected_result_graph: GraphLike,
     log: Union[logging.Logger, None] = None,
-):
+) -> bool:
     DASH_GraphValidationTestCase = DASH.GraphValidationTestCase
     DASH_InferencingTestCase = DASH.InferencingTestCase
     DASH_FunctionTestCase = DASH.FunctionTestCase
