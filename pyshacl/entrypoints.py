@@ -36,7 +36,7 @@ class ValidateKwargs(TypedDict, total=False):
     shacl_graph: Optional[DataGraphInput]
     ont_graph: Optional[DataGraphInput]
     advanced: Optional[bool]
-    inference: Optional[str]
+    inference: Optional[typing.Literal["rdfs", "owlrl", "both", "none"]]
     inplace: Optional[bool]
     abort_on_first: Optional[bool]
     allow_infos: Optional[bool]
@@ -45,6 +45,7 @@ class ValidateKwargs(TypedDict, total=False):
     sparql_mode: Optional[bool]
     focus_nodes: Optional[list[Union[str, URIRef]]]
     use_shapes: Optional[list[Union[str, URIRef]]]
+    debug: Optional[bool]
 
 @overload
 def validate(
@@ -77,7 +78,7 @@ def validate(
     shacl_graph: Optional[DataGraphInput] = None,
     ont_graph: Optional[DataGraphInput] = None,
     advanced: Optional[bool] = False,
-    inference: Optional[str] = None,
+    inference: Optional[typing.Literal["rdfs", "owlrl", "both", "none"]] = None,
     inplace: Optional[bool] = False,
     abort_on_first: Optional[bool] = False,
     allow_infos: Optional[bool] = False,
