@@ -5,7 +5,9 @@ from collections.abc import Sequence
 from functools import wraps
 from io import BufferedIOBase, TextIOBase
 from sys import stderr
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, TypeAlias, Union, Optional, overload, TypedDict
+import typing
+from typing_extensions import Unpack
 
 from rdflib import Dataset, Graph, Literal, URIRef
 
@@ -22,16 +24,55 @@ from .validator_conformance import check_dash_result
 
 DataGraphInput = Union[DataGraph, GraphLike, BufferedIOBase, TextIOBase, str, bytes]
 MultiDataGraphInput = Sequence[DataGraphInput]
-
+ValidateReturn: TypeAlias = tuple[bool, Graph, str]
+ValidateEachReturn: TypeAlias = dict[int, ValidateReturn]
 
 def _is_multi_data_graph_input(data_graph: object) -> bool:
     if isinstance(data_graph, (str, bytes, DataGraph, BufferedIOBase, TextIOBase, Graph, Dataset)):
         return False
     return isinstance(data_graph, (tuple, list, set, frozenset, Sequence))
 
+class ValidateKwargs(TypedDict, total=False):
+    shacl_graph: Optional[DataGraphInput]
+    ont_graph: Optional[DataGraphInput]
+    advanced: Optional[bool]
+    inference: Optional[str]
+    inplace: Optional[bool]
+    abort_on_first: Optional[bool]
+    allow_infos: Optional[bool]
+    allow_warnings: Optional[bool]
+    max_validation_depth: Optional[int]
+    sparql_mode: Optional[bool]
+    focus_nodes: Optional[list[Union[str, URIRef]]]
+    use_shapes: Optional[list[Union[str, URIRef]]]
 
+@overload
 def validate(
-    data_graph: Union[DataGraphInput, MultiDataGraphInput],
+    data_graph: MultiDataGraphInput,
+    *args: Any,
+    multi_data_graphs_mode: typing.Literal["validate_each"],
+    **kwargs: Unpack[ValidateKwargs],
+) -> ValidateEachReturn:
+    # Return type is a dict only if `multi_data_graphs_mode` is "validate_each" *and* `data_graph` is a sequence of data graphs
+    ...
+@overload
+def validate(
+    data_graph: DataGraphInput,
+    *args: Any,
+    multi_data_graphs_mode: typing.Literal["combine", "validate_each"] | None = None,
+    **kwargs: Unpack[ValidateKwargs],
+) -> ValidateReturn:
+    ...
+@overload
+def validate(
+    data_graph: MultiDataGraphInput,
+    *args: Any,
+    multi_data_graphs_mode: typing.Literal["combine"] | None = None,
+    **kwargs: Unpack[ValidateKwargs],
+) -> ValidateReturn:
+    ...
+def validate(
+    data_graph,
     *args,
     shacl_graph: Optional[DataGraphInput] = None,
     ont_graph: Optional[DataGraphInput] = None,
@@ -43,11 +84,11 @@ def validate(
     allow_warnings: Optional[bool] = False,
     max_validation_depth: Optional[int] = None,
     sparql_mode: Optional[bool] = False,
-    focus_nodes: Optional[List[Union[str, URIRef]]] = None,
-    use_shapes: Optional[List[Union[str, URIRef]]] = None,
+    focus_nodes: Optional[list[Union[str, URIRef]]] = None,
+    use_shapes: Optional[list[Union[str, URIRef]]] = None,
     multi_data_graphs_mode: Optional[str] = None,
     **kwargs,
-):
+) -> Union[ValidateReturn, ValidateEachReturn]:
     """
     :param data_graph: rdflib.Graph, file path, web URL, or a array-like sequence of those to validate
     :type data_graph: rdflib.Graph | str | bytes | Sequence
@@ -173,7 +214,7 @@ def validate(
         query_endpoint: str = data_graph
         username = os.getenv("PYSHACL_SPARQL_USERNAME", "")
         method = os.getenv("PYSHACL_SPARQL_METHOD", "GET")
-        auth: Optional[Tuple[str, str]]
+        auth: Optional[tuple[str, str]]
         if username:
             password: str = os.getenv("PYSHACL_SPARQL_PASSWORD", "")
             auth = (username, password)
@@ -269,10 +310,10 @@ def validate_each(
     allow_warnings: Optional[bool] = False,
     max_validation_depth: Optional[int] = None,
     sparql_mode: Optional[bool] = False,
-    focus_nodes: Optional[List[Union[str, URIRef]]] = None,
-    use_shapes: Optional[List[Union[str, URIRef]]] = None,
+    focus_nodes: Optional[list[Union[str, URIRef]]] = None,
+    use_shapes: Optional[list[Union[str, URIRef]]] = None,
     **kwargs,
-) -> Dict[int, Tuple[bool, Union[GraphLike, bytes, ValidationFailure], str]]:
+) -> ValidateEachReturn:
     """
     :param data_graphs: Sequence of data graphs or sources to validate independently
     :type data_graphs: Sequence
@@ -286,7 +327,7 @@ def validate_each(
     data_graph_list = list(data_graphs)
     if len(data_graph_list) < 1:
         raise ReportableRuntimeError("No data graphs were provided for validate_each.")
-    results: Dict[int, Tuple[bool, Union[GraphLike, bytes, ValidationFailure], str]] = {}
+    results: ValidateEachReturn = {}
     for datagraph_i, data_graph in enumerate(data_graph_list):
         result = validate(
             data_graph,
@@ -366,8 +407,8 @@ def shacl_rules(
     ont_graph: Optional[Union[GraphLike, BufferedIOBase, TextIOBase, str, bytes]] = None,
     inference: Optional[str] = None,
     inplace: Optional[bool] = False,
-    focus_nodes: Optional[List[Union[str, URIRef]]] = None,
-    use_shapes: Optional[List[Union[str, URIRef]]] = None,
+    focus_nodes: Optional[list[Union[str, URIRef]]] = None,
+    use_shapes: Optional[list[Union[str, URIRef]]] = None,
     **kwargs,
 ) -> Union[str, GraphLike]:
     """
